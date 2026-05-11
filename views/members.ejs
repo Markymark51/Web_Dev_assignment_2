@@ -1,0 +1,17 @@
+<%- include('partials/header.ejs') %>
+<div class="container my-4">
+    <div class="bg-white rounded-3 shadow-sm p-4 mb-4">
+        <h1 class="h2 mb-3">Welcome, <%= username %>!</h1>
+        <p class="mb-1"><strong>Email:</strong> <%= email %></p>
+        <p class="text-muted">Here are some games that I like :)</p>
+        <form action="/logout" method="get">
+            <button class="btn btn-primary" type="submit">Log Out</button>
+        </form>
+    </div>
+    <div class="row mb-3 text-center">
+        <div class="col-md-4 themed-grid-col"><img src="/images/dbd.png" alt="Image" style="max-width:100%; height:auto;"><br><br></div>
+        <div class="col-md-4 themed-grid-col"><img src="/images/scrapMechanic.png" alt="Image" style="max-width:100%; height:auto;"><br><br></div>
+        <div class="col-md-4 themed-grid-col"><img src="/images/silksong.png" alt="Image" style="max-width:100%; height:auto;"><br><br></div>
+    </div>
+</div>
+<%- include('partials/footer.ejs') %>

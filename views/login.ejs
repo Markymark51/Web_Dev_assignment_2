@@ -1,0 +1,21 @@
+<%- include('partials/header.ejs') %>
+<div class="container">
+<form action="<%= Action %>" method="POST">
+    <h1 class="h3 mb-3 fw-normal"><%= Title %></h1>
+    <% if (error != "") { %>
+        <div class="alert alert-danger" role="alert">
+            <p> <%= error %> </p>
+        </div>
+    <% } %>
+    <% if (signup) { %>
+        <div class="form-floating" style=""> <input type="text" class="form-control" id="floatingInput" name="username"
+            placeholder="username" style=""> <label for="floatingInput" style="">username</label> </div>
+    <% } %>
+    <div class="form-floating" style=""> <input type="email" class="form-control" id="floatingInput" name="email"
+            placeholder="name@example.com" style=""> <label for="floatingInput" style="">Email address</label> </div>
+    <div class="form-floating" style=""> <input type="password" class="form-control" id="floatingPassword" name="password"
+            placeholder="Password" style=""> <label for="floatingPassword" style="">Password</label> </div>
+    <button class="btn btn-primary" type="submit"><%= ButtonLabel %></button>
+</form>
+</div>
+ <%- include('partials/footer.ejs') %>

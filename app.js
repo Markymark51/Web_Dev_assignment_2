@@ -13,6 +13,8 @@ const expireTimeMS = 60 * 60 * 1000;
 const MONGODB_DATABASE = process.env.MONGODB_DATABASE;
 
 app.use(express.urlencoded({ extended: true }));
+app.set('view engine', 'ejs');
+app.use(express.static(__dirname + "/public"));
 
 const client = new MongoClient(
   process.env.MONGODB_CONNECT_NON_SRV, {}
@@ -39,61 +41,122 @@ app.use(session({
   store: mongostore
 }));
 
-app.use(express.urlencoded({extended: false}));
-app.use(express.static(__dirname + "/public"));
+app.use((req, res, next) => {
+  const route = req.path;
+  if (route === '/') res.locals.activePage = 'home';
+  else if (route === '/login') res.locals.activePage = 'login';
+  else if (route === '/signup') res.locals.activePage = 'signup';
+  else if (route === '/members') res.locals.activePage = 'members';
+  else if (route === '/admin' || route === '/adminError') res.locals.activePage = 'admin';
+  else res.locals.activePage = '';
+  next();
+});
+
+function loginCheck(req, res, next) {
+    if (req.session.authenticated) {
+        return next();
+    }
+    return res.redirect('/login');
+}
+
+async function adminCheck(req, res, next) {
+    if (req.session.isAdmin) {
+        return next();
+    }
+	else
+	{
+		currentUser = await userCollection.findOne({ username: req.session.username }, { projection: { admin: 1 } });
+		if (!currentUser || !currentUser.admin) {
+			return res.redirect('/adminError');
+		}
+		return next();
+	}
+
+    return res.redirect('/adminError');
+}
 
 app.get('/', (req, res) => {
-	if(req.session.authenticated) {
-		res.send(`
-			<h1>Welcome, ${req.session.username}!</h1>
-			<form action="/members" method="GET">
-				<button type="submit">go to members</button>
-			</form>
-			<form action="/logout" method="GET">
-				<button type="submit">Log Out</button>
-			</form>
-		`);
+
+	if(req.session.authenticated) 
+	{
+		res.render('index', {
+			firstAction: "members",
+			secondAction: "logout",
+			buttonLabel1: "Go to Members",
+			buttonLabel2: "Log Out", greetUser: true,
+			username: req.session.username,
+			login: false,
+			activePage: 'home'});
 	}
-	else {
-	res.send(`
-            <h1>Home</h1>
-            <form action="/signup" method="GET">
-                <button type="submit">Sign Up</button>
-            </form>
-            <form action="/login" method="GET">
-                <button type="submit">Log In</button>
-            </form>
-        `);
+	else 
+	{
+		res.render('index', {
+			firstAction: "signup",
+		 	secondAction: "login", 
+			buttonLabel1: "Sign Up", 
+			buttonLabel2: "Log In", 
+			greetUser: false, 
+			username: null, 
+			login: true,
+			activePage: 'home'});
 	}
 
 });
 
 app.get('/signup', (req, res) => {
-	res.send(`
-			<h1>Sign Up</h1>
-			<form action="/signupSubmit" method="POST">
-				<label for="username">Username:</label>
-				<input type="text" id="username" name="username"><br><br>
-				<label for="email">Email:</label>
-				<input type="email" id="email" name="email"><br><br>
-				<label for="password">Password:</label>
-				<input type="password" id="password" name="password"><br><br>
-				<button type="submit">Sign Up</button>
-			</form>
-		`);
+	res.render('login', {
+		signup: true, 
+		Action: "/signupSubmit", 
+		Title: "Sign Up", 
+		ButtonLabel: "Sign Up",
+		error: "",
+		activePage: 'signup'
+	});
 });
 
+
 app.get('/login', (req, res) => {
-	res.send(`
-			<h1>Log In</h1> 
-			<form action="/loginSubmit" method="POST">
-				<label for="email">Email:</label>
-				<input type="email" id="email" name="email" required><br><br>
-				<label for="password">Password:</label>
-				<input type="password" id="password" name="password" required><br><br>
-				<button type="submit">Log In</button>
-			</form>
-		`);
+	res.render('login', {
+		signup: false, 
+		Action: "/loginSubmit", 
+		Title: "Log In", 
+		ButtonLabel: "Log In",
+		error: "",
+		activePage: 'login'
+	});
+});
+
+app.get('/admin', loginCheck, adminCheck, async (req, res) => {
+
+	const users = await userCollection.find({}).project({username: 1, email: 1, admin: 1}).toArray();
+	res.render('admin', { users: users, activePage: 'admin'});
+});
+
+app.post('/promoteUser', loginCheck, adminCheck, async (req, res) => {
+	const username = req.body.username;
+	const user = await userCollection.findOne({ username: username });
+	if (user) {
+		await userCollection.updateOne({ username: username }, { $set: { admin: true } });
+	}
+	res.redirect('/admin');
+});
+
+app.post('/demoteUser', loginCheck, adminCheck, async (req, res) => {
+	const username = req.body.username;
+	const user = await userCollection.findOne({ username: username });
+	if (user) {
+		await userCollection.updateOne({ username: username }, { $set: { admin: false } });
+	}
+
+	if(username === req.session.username) {
+		req.session.isAdmin = false;
+	}
+	res.redirect('/admin');
+});
+
+app.get('/adminError', (req, res) => {
+	res.status(403);
+	res.render('adminError', { activePage: 'admin' });
 });
 
 app.post('/signupSubmit', async (req, res) => {
@@ -102,26 +165,29 @@ app.post('/signupSubmit', async (req, res) => {
 	const password = req.body.password;
 
 	let validInput = true;
-	let emptyMessage = "/signupError?";
+	let emptyMessage = "";
 	if (!username) {
-		emptyMessage += "<p>Username is required.</p>";
+		emptyMessage += "Username is required. \n";
 		validInput = false;
 	}
 	if (!email) {
-		emptyMessage += "<p>Email is required.</p>";
+		emptyMessage += "Email is required. \n";
 		validInput = false;
 	} 
 	if (!password) {
-		emptyMessage += "<p>Password is required.</p>";
+		emptyMessage += "Password is required. \n";
 		validInput = false;
 	}
 
 	if (!validInput) {
-		res.send(`
-			<h1>Sign Up Error</h1>
-			<p>${emptyMessage}</p>
-			<a href="/signup">Go back to Sign Up</a>
-		`);
+		res.render('login', {
+		signup: true, 
+		Action: "/signupSubmit", 
+		Title: "Sign Up", 
+		ButtonLabel: "Sign Up",
+		error: emptyMessage,
+		activePage: 'signup'
+	});
 		return;
 	}
 
@@ -144,7 +210,7 @@ app.post('/signupSubmit', async (req, res) => {
 
 	var hashedPassword = await bcrypt.hash(password, 10);
 
-	await userCollection.insertOne({username: username, email: email, password: hashedPassword});
+	await userCollection.insertOne({username: username, email: email, password: hashedPassword, admin: false});
 
 	req.session.authenticated = true;
     req.session.username = username;
@@ -164,20 +230,28 @@ app.post('/loginSubmit', async (req, res) => {
 
 	const validationResult = schema.validate({ email, password });
     if (validationResult.error) {
-        res.send(`
-            <p>Invalid email/password combination.</p>
-            <a href="/login">Try again</a>
-        `);
+		res.render('login', {
+			signup: false, 
+			Action: "/loginSubmit",
+			Title: "Log In",
+			ButtonLabel: "Log In",
+			error: "Invalid email/password combination.",
+			activePage: 'login'
+		});
 		return;
     }
  
-	const result = await userCollection.find({email: email}).project({email: 1, password: 1, username: 1}).toArray();
+	const result = await userCollection.find({email: email}).project({email: 1, password: 1, username: 1, admin: 1}).toArray();
 
 	if (result.length != 1) {
-		return res.send(`
-            <p>Invalid email/password combination.</p>
-            <a href="/login">Try again</a>
-        `);
+		res.render('login', {
+			signup: false, 
+			Action: "/loginSubmit",
+			Title: "Log In",
+			ButtonLabel: "Log In",
+			error: "Invalid email/password combination.",
+			activePage: 'login'
+		});
 		return;
 	}
 	const user = result[0];
@@ -185,38 +259,26 @@ app.post('/loginSubmit', async (req, res) => {
 	const isMatch = await bcrypt.compare(password, user.password);
 
 	if (!isMatch) {
-		res.send(`
-            <p>Invalid password.</p>
-            <a href="/login">Try again</a>
-        `);
+		res.render('login', {
+			signup: false, 
+			Action: "/loginSubmit",
+			Title: "Log In",
+			ButtonLabel: "Log In",
+			error: "Invalid password",
+			activePage: 'login'
+		});
 		return;
 	} 
 
 	req.session.authenticated = true;
     req.session.username = user.username;
     req.session.email = user.email;
-
+    req.session.isAdmin = user.admin;
 	res.redirect("/members");
 });
 
-app.get("/members", (req, res) => {
-	if (req.session.authenticated) {
-		const images = ["/images/dbd.png", "/images/scrapMechanic.png", "/images/silksong.png"];
-		const randomImage = images[Math.floor(Math.random() * images.length)];
-
-		res.send(`
-			<h1>Welcome, ${req.session.username}!</h1>
-			<p>Email: ${req.session.email}</p>
-			<p>Heres a random game that I like :)</p>
-			<form action="/logout" method="get">
-				<button type="submit">Log Out</button>
-			</form>
-			<img src="${randomImage}" alt="Random Image" style="width:600px;"><br><br>
-		`);
-	}
-	else {
-		res.redirect("/");
-	}
+app.get("/members", loginCheck, (req, res) => {
+	res.render("members", {username: req.session.username, email: req.session.email, activePage: 'members'});
 });
 
 app.get("/logout", (req, res) => {
@@ -227,7 +289,7 @@ app.get("/logout", (req, res) => {
 
 app.use((req,res) => {
 	res.status(404);
-	res.send("Page not found - 404");
+	res.render('404');
 });
 
 app.listen(PORT, () => {
