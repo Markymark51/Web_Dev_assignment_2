@@ -60,13 +60,13 @@ function loginCheck(req, res, next) {
 }
 
 async function adminCheck(req, res, next) {
-    if (req.session.isAdmin) {
+    if (req.session.userType === 'admin') {
         return next();
     }
 	else
 	{
-		currentUser = await userCollection.findOne({ username: req.session.username }, { projection: { admin: 1 } });
-		if (!currentUser || !currentUser.admin) {
+		currentUser = await userCollection.findOne({ username: req.session.username }, { projection: { user_type: 1 } });
+		if (!currentUser || currentUser.user_type !== 'admin') {
 			return res.redirect('/adminError');
 		}
 		return next();
@@ -128,7 +128,7 @@ app.get('/login', (req, res) => {
 
 app.get('/admin', loginCheck, adminCheck, async (req, res) => {
 
-	const users = await userCollection.find({}).project({username: 1, email: 1, admin: 1}).toArray();
+	const users = await userCollection.find({}).project({username: 1, email: 1, user_type: 1}).toArray();
 	res.render('admin', { users: users, activePage: 'admin'});
 });
 
@@ -136,7 +136,7 @@ app.post('/promoteUser', loginCheck, adminCheck, async (req, res) => {
 	const username = req.body.username;
 	const user = await userCollection.findOne({ username: username });
 	if (user) {
-		await userCollection.updateOne({ username: username }, { $set: { admin: true } });
+		await userCollection.updateOne({ username: username }, { $set: { user_type: 'admin' } });
 	}
 	res.redirect('/admin');
 });
@@ -145,11 +145,11 @@ app.post('/demoteUser', loginCheck, adminCheck, async (req, res) => {
 	const username = req.body.username;
 	const user = await userCollection.findOne({ username: username });
 	if (user) {
-		await userCollection.updateOne({ username: username }, { $set: { admin: false } });
+		await userCollection.updateOne({ username: username }, { $set: { user_type: 'user' } });
 	}
 
 	if(username === req.session.username) {
-		req.session.isAdmin = false;
+		req.session.userType = 'user';
 	}
 	res.redirect('/admin');
 });
@@ -210,7 +210,7 @@ app.post('/signupSubmit', async (req, res) => {
 
 	var hashedPassword = await bcrypt.hash(password, 10);
 
-	await userCollection.insertOne({username: username, email: email, password: hashedPassword, admin: false});
+	await userCollection.insertOne({username: username, email: email, password: hashedPassword, user_type: 'user'});
 
 	req.session.authenticated = true;
     req.session.username = username;
@@ -241,7 +241,7 @@ app.post('/loginSubmit', async (req, res) => {
 		return;
     }
  
-	const result = await userCollection.find({email: email}).project({email: 1, password: 1, username: 1, admin: 1}).toArray();
+	const result = await userCollection.find({email: email}).project({email: 1, password: 1, username: 1, user_type: 1}).toArray();
 
 	if (result.length != 1) {
 		res.render('login', {
@@ -273,7 +273,7 @@ app.post('/loginSubmit', async (req, res) => {
 	req.session.authenticated = true;
     req.session.username = user.username;
     req.session.email = user.email;
-    req.session.isAdmin = user.admin;
+    req.session.userType = user.user_type;
 	res.redirect("/members");
 });
 
